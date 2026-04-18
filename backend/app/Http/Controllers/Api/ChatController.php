@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Models\UserMatch;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Notification;
 use App\Models\ConnectionRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ChatController extends Controller
 {
@@ -17,52 +20,65 @@ class ChatController extends Controller
      */
     public function conversations(Request $request)
     {
-        $user = $request->user();
-        
-        // Get matches with their conversations
-        $matches = UserMatch::where('is_active', true)
-            ->where(function ($q) use ($user) {
-                $q->where('user_one_id', $user->id)
-                    ->orWhere('user_two_id', $user->id);
-            })
-            ->with(['conversation', 'userOne', 'userOne.profile', 'userOne.images' => function ($q) {
-                $q->where('is_primary', true);
-            }, 'userTwo', 'userTwo.profile', 'userTwo.images' => function ($q) {
-                $q->where('is_primary', true);
-            }])
-            ->get()
-            ->map(function ($match) use ($user) {
-                $otherUser = $match->user_one_id === $user->id ? $match->userTwo : $match->userOne;
-                $conversation = $match->conversation;
-                
-                // Get last message
-                $lastMessage = $conversation ? $conversation->messages()->latest()->first() : null;
-                
-                // Get unread count
-                $unreadCount = $conversation 
-                    ? $conversation->messages()
-                        ->where('sender_id', '!=', $user->id)
-                        ->where('is_read', false)
-                        ->count()
-                    : 0;
-                
-                return [
-                    'match_id' => $match->id,
-                    'conversation_id' => $conversation?->id,
-                    'other_user' => $otherUser,
-                    'last_message' => $lastMessage,
-                    'unread_count' => $unreadCount,
-                    'matched_at' => $match->matched_at,
-                ];
-            })
-            ->sortByDesc(function ($conv) {
-                return $conv['last_message']?->created_at ?? $conv['matched_at'];
-            })
-            ->values();
-        
-        return response()->json([
-            'conversations' => $matches,
-        ]);
+        try {
+            $user = $request->user();
+
+            // Get conversations with basic user info
+            $conversations = UserMatch::where('is_active', true)
+                ->where(function ($q) use ($user) {
+                    $q->where('user_one_id', $user->id)
+                        ->orWhere('user_two_id', $user->id);
+                })
+                ->orderBy('created_at', 'desc')
+                ->take(20)
+                ->get()
+                ->map(function ($match) use ($user) {
+                    $otherUserId = $match->user_one_id === $user->id ? $match->user_two_id : $match->user_one_id;
+
+                    // Get basic user info
+                    $otherUser = User::find($otherUserId);
+                    $firstName = 'User';
+                    $profileImage = null;
+
+                    if ($otherUser && $otherUser->profile) {
+                        $firstName = $otherUser->profile->first_name ?: 'User';
+
+                        // Get primary profile image
+                        if ($otherUser->images && $otherUser->images->count() > 0) {
+                            $primaryImage = $otherUser->images->where('is_primary', true)->first();
+                            if (!$primaryImage) {
+                                $primaryImage = $otherUser->images->first(); // fallback to first image
+                            }
+                            if ($primaryImage) {
+                                $profileImage = $primaryImage->image_url;
+                            }
+                        }
+                    }
+
+                    return [
+                        'match_id' => $match->id,
+                        'conversation_id' => $match->conversation?->id,
+                        'other_user' => [
+                            'id' => $otherUserId,
+                            'first_name' => $firstName,
+                            'profile_image' => $profileImage,
+                        ],
+                        'matched_at' => $match->created_at?->toISOString(),
+                    ];
+                })->filter()->values();
+
+            return response()->json([
+                'conversations' => $conversations,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('conversations error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Server error'
+            ], 500);
+        }
     }
 
     /**
@@ -203,15 +219,13 @@ class ChatController extends Controller
 
         // Create match and conversation
         $match = UserMatch::create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
             'user_one_id' => min($user->id, $otherUserId),
             'user_two_id' => max($user->id, $otherUserId),
             'is_active' => true,
-            'matched_at' => now(),
         ]);
 
-        $conversation = $match->conversation()->create([
-            'is_active' => true,
-        ]);
+        $conversation = $match->conversation()->create([]);
 
         return response()->json([
             'success' => true,

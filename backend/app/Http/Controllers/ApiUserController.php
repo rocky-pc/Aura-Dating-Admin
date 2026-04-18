@@ -9,6 +9,7 @@ use App\Models\UserProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class ApiUserController extends Controller
@@ -45,10 +46,17 @@ class ApiUserController extends Controller
         // Build query for discovery users
         $query = User::where('id', '!=', $user->id)
             ->where('is_active', 1)
-            ->where('role', '!=', 'admin')
+            ->where('role', 'user') // Only show regular users, exclude admin/moderator accounts
             ->whereNotIn('id', $swipedUserIds)
             ->whereNotIn('id', $blockedIds)
             ->with(['profile', 'images']);
+
+        // Debug logging
+        Log::info('Discovery query for user', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'total_users_found' => $query->count()
+        ]);
 
         // Filter by gender preference
         if ($profile->interested_in && $profile->interested_in !== 'everyone') {

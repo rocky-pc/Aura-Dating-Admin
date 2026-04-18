@@ -9,6 +9,8 @@ use App\Models\Like;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class MatchController extends Controller
 {
@@ -117,6 +119,10 @@ class MatchController extends Controller
             return response()->json(['success' => false, 'error' => 'Cannot like yourself'], 400);
         }
 
+        if ($targetUser->role !== 'user') {
+            return response()->json(['success' => false, 'error' => 'Cannot interact with this user'], 403);
+        }
+
         DB::beginTransaction();
         try {
             // Check for existing like relationship
@@ -140,8 +146,26 @@ class MatchController extends Controller
                     if ($existingLike->sender_id === $targetUser->id) {
                         $existingLike->update(['status' => 'accepted']);
 
-                        // Create conversation
-                        $this->createConversation($user->id, $targetUser->id);
+                        // Check if match already exists
+                        $existingMatch = UserMatch::where(function ($q) use ($user, $targetUser) {
+                            $q->where('user_one_id', min($user->id, $targetUser->id))
+                              ->where('user_two_id', max($user->id, $targetUser->id));
+                        })->first();
+
+                        if (!$existingMatch) {
+                            // Create match record
+                            $match = UserMatch::create([
+                                'uuid' => (string) Str::uuid(),
+                                'user_one_id' => min($user->id, $targetUser->id),
+                                'user_two_id' => max($user->id, $targetUser->id),
+                                'is_active' => true,
+                            ]);
+
+                            // Create conversation for the match
+                            Conversation::create([
+                                'match_id' => $match->id,
+                            ]);
+                        }
 
                         DB::commit();
                         return response()->json([
@@ -199,16 +223,30 @@ class MatchController extends Controller
     public function likeAction(Request $request)
     {
         $request->validate([
-            'like_id' => 'required|integer|exists:likes,id',
+            'like_id' => 'required|numeric|exists:likes,id',
             'action' => 'required|in:accept,reject',
         ]);
 
         $user = $request->user();
 
+        // Debug logging
+        Log::info('likeAction called', [
+            'like_id' => $request->like_id,
+            'like_id_type' => gettype($request->like_id),
+            'action' => $request->action,
+            'user_id' => $user->id
+        ]);
+
         $like = Like::where('id', $request->like_id)
             ->where('receiver_id', $user->id)
             ->where('status', 'pending')
             ->first();
+
+        Log::info('Like query result', [
+            'like_found' => $like ? 'yes' : 'no',
+            'like_id' => $request->like_id,
+            'receiver_id' => $user->id
+        ]);
 
         if (!$like) {
             return response()->json([
@@ -220,16 +258,76 @@ class MatchController extends Controller
         DB::beginTransaction();
         try {
             if ($request->action === 'accept') {
+                Log::info('Accepting like', [
+                    'like_id' => $like->id,
+                    'sender_id' => $like->sender_id,
+                    'receiver_id' => $user->id
+                ]);
+
                 $like->update(['status' => 'accepted']);
 
-                // Create conversation
-                $this->createConversation($user->id, $like->sender_id);
+                // Check if match already exists
+                $existingMatch = UserMatch::where(function ($q) use ($user, $like) {
+                    $q->where('user_one_id', min($user->id, $like->sender_id))
+                      ->where('user_two_id', max($user->id, $like->sender_id));
+                })->first();
+
+                Log::info('Existing match check', [
+                    'existing_match' => $existingMatch ? 'found' : 'not found',
+                    'user_one_id' => min($user->id, $like->sender_id),
+                    'user_two_id' => max($user->id, $like->sender_id)
+                ]);
+
+                if (!$existingMatch) {
+                    try {
+                        // Create match record
+                        $match = UserMatch::create([
+                            'user_one_id' => min($user->id, $like->sender_id),
+                            'user_two_id' => max($user->id, $like->sender_id),
+                            'is_active' => true,
+                        ]);
+
+                        Log::info('UserMatch created successfully', [
+                            'match_id' => $match->id,
+                            'user_one_id' => $match->user_one_id,
+                            'user_two_id' => $match->user_two_id
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to create UserMatch', [
+                            'error' => $e->getMessage(),
+                            'user_id' => $user->id,
+                            'sender_id' => $like->sender_id
+                        ]);
+                        // Continue without match record for now
+                        $match = null;
+                    }
+
+                    Log::info('Created new match', [
+                        'match_id' => $match->id,
+                        'user_one_id' => $match->user_one_id,
+                        'user_two_id' => $match->user_two_id
+                    ]);
+
+                    // Create conversation for the match
+                    $conversation = Conversation::create([
+                        'match_id' => $match->id,
+                    ]);
+
+                    Log::info('Created conversation', [
+                        'conversation_id' => $conversation->id,
+                        'match_id' => $match->id
+                    ]);
+                } else {
+                    $match = $existingMatch;
+                    Log::info('Using existing match', ['match_id' => $match->id]);
+                }
 
                 DB::commit();
                 return response()->json([
                     'success' => true,
                     'message' => 'Like accepted! You can now chat.',
-                    'is_match' => true
+                    'is_match' => true,
+                    'match' => $match
                 ]);
             } else {
                 $like->update(['status' => 'rejected']);
@@ -245,7 +343,7 @@ class MatchController extends Controller
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to process action'
+                'error' => 'Failed to process action: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -255,81 +353,159 @@ class MatchController extends Controller
      */
     public function getMatches(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        // Get sent pending likes (you liked them, waiting)
-        $sentPending = Like::where('sender_id', $user->id)
-            ->where('status', 'pending')
-            ->with(['receiver.profile', 'receiver.images'])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($like) {
-                return array_merge($like->receiver->toArray(), [
-                    'like_id' => $like->id,
-                    'liked_at' => $like->created_at,
-                ]);
-            });
+            Log::info('getMatches called', ['user_id' => $user->id]);
 
-        // Get received pending likes (they liked you, waiting for accept)
-        $receivedPending = Like::where('receiver_id', $user->id)
-            ->where('status', 'pending')
-            ->with(['sender.profile', 'sender.images'])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($like) {
-                return array_merge($like->sender->toArray(), [
-                    'like_id' => $like->id,
-                    'liked_at' => $like->created_at,
-                ]);
-            });
+            // Get sent pending likes (you liked them, waiting)
+            $sentPending = Like::where('sender_id', $user->id)
+                ->where('status', 'pending')
+                ->with(['receiver:id,email'])
+                ->orderBy('created_at', 'desc')
+                ->take(10)
+                ->get()
+                ->map(function ($like) {
+                    $receiver = $like->receiver;
+                    $firstName = 'User';
+                    $profileImage = null;
 
-        // Get accepted matches
-        $matches = Like::where(function ($q) use ($user) {
-                $q->where('sender_id', $user->id)->orWhere('receiver_id', $user->id);
-            })
-            ->where('status', 'accepted')
-            ->with(['sender.profile', 'sender.images', 'receiver.profile', 'receiver.images'])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($like) use ($user) {
-                $otherUser = $like->sender_id === $user->id ? $like->receiver : $like->sender;
-                return array_merge($otherUser->toArray(), [
-                    'like_id' => $like->id,
-                    'matched_at' => $like->updated_at,
-                    'match_type' => $like->sender_id === $user->id ? 'sent' : 'received',
-                ]);
-            });
+                    if ($receiver && $receiver->profile) {
+                        $firstName = $receiver->profile->first_name ?: 'User';
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'sent_pending' => $sentPending,
-                'received_pending' => $receivedPending,
-                'matches' => $matches,
-            ]
-        ]);
+                        // Get primary profile image
+                        if ($receiver->images && $receiver->images->count() > 0) {
+                            $primaryImage = $receiver->images->where('is_primary', true)->first();
+                            if (!$primaryImage) {
+                                $primaryImage = $receiver->images->first();
+                            }
+                            if ($primaryImage) {
+                                $profileImage = $primaryImage->image_url;
+                            }
+                        }
+                    }
+
+                    return [
+                        'id' => $receiver->id,
+                        'like_id' => $like->id,
+                        'first_name' => $firstName,
+                        'profile_image' => $profileImage,
+                        'liked_at' => $like->created_at->toISOString(),
+                    ];
+                })->filter()->values();
+
+            // Get received pending likes (they liked you, waiting for accept)
+            $receivedPending = Like::where('receiver_id', $user->id)
+                ->where('status', 'pending')
+                ->with(['sender:id,email'])
+                ->orderBy('created_at', 'desc')
+                ->take(10)
+                ->get()
+                ->map(function ($like) {
+                    $sender = $like->sender;
+                    $firstName = 'User';
+                    $profileImage = null;
+
+                    if ($sender && $sender->profile) {
+                        $firstName = $sender->profile->first_name ?: 'User';
+
+                        // Get primary profile image
+                        if ($sender->images && $sender->images->count() > 0) {
+                            $primaryImage = $sender->images->where('is_primary', true)->first();
+                            if (!$primaryImage) {
+                                $primaryImage = $sender->images->first();
+                            }
+                            if ($primaryImage) {
+                                $profileImage = $primaryImage->image_url;
+                            }
+                        }
+                    }
+
+                    return [
+                        'id' => $sender->id,
+                        'like_id' => $like->id,
+                        'first_name' => $firstName,
+                        'profile_image' => $profileImage,
+                        'liked_at' => $like->created_at->toISOString(),
+                    ];
+                })->filter()->values();
+
+            // Get accepted matches with basic user info
+            $matches = UserMatch::where(function ($q) use ($user) {
+                    $q->where('user_one_id', $user->id)->orWhere('user_two_id', $user->id);
+                })
+                ->where('is_active', true)
+                ->orderBy('created_at', 'desc')
+                ->take(20)
+                ->get()
+                ->map(function ($match) use ($user) {
+                    $otherUserId = $match->user_one_id === $user->id ? $match->user_two_id : $match->user_one_id;
+
+                    // Get basic user info without complex relationships
+                    $otherUser = User::find($otherUserId);
+                    $firstName = 'User';
+                    $profileImage = null;
+
+                    if ($otherUser && $otherUser->profile) {
+                        $firstName = $otherUser->profile->first_name ?: 'User';
+
+                        // Get primary profile image
+                        if ($otherUser->images && $otherUser->images->count() > 0) {
+                            $primaryImage = $otherUser->images->where('is_primary', true)->first();
+                            if (!$primaryImage) {
+                                $primaryImage = $otherUser->images->first(); // fallback to first image
+                            }
+                            if ($primaryImage) {
+                                $profileImage = $primaryImage->image_url;
+                            }
+                        }
+                    }
+
+                    return [
+                        'id' => $match->id,
+                        'user' => [
+                            'id' => $otherUserId,
+                            'first_name' => $firstName,
+                            'profile_image' => $profileImage,
+                        ],
+                        'matched_at' => $match->created_at?->toISOString(),
+                    ];
+                })->filter()->values();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'sent_pending' => $sentPending,
+                    'received_pending' => $receivedPending,
+                    'matches' => $matches,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('getMatches error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Server error'
+            ], 500);
+        }
     }
 
     /**
-     * Create conversation between two users
+     * Create conversation for a match
      */
     private function createConversation($user1Id, $user2Id)
     {
-        // Ensure consistent ordering (smaller ID first)
-        $u1 = min($user1Id, $user2Id);
-        $u2 = max($user1Id, $user2Id);
-
-        // Check if conversation exists
-        $existing = Conversation::where(function ($q) use ($u1, $u2) {
-            $q->where('user_one_id', $u1)->where('user_two_id', $u2)
-              ->orWhere('user_one_id', $u2)->where('user_two_id', $u1);
+        // Find the match record
+        $match = UserMatch::where(function ($q) use ($user1Id, $user2Id) {
+            $q->where('user_one_id', min($user1Id, $user2Id))
+              ->where('user_two_id', max($user1Id, $user2Id));
         })->first();
 
-        if (!$existing) {
+        if ($match && !$match->conversation) {
             Conversation::create([
-                'user_one_id' => $u1,
-                'user_two_id' => $u2,
-                'is_active' => true,
+                'match_id' => $match->id,
             ]);
         }
     }

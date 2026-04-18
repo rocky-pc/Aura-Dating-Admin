@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserProfile;
 use App\Models\UserSwipe;
 use App\Models\UserMatch;
+use App\Models\Like;
 use App\Models\UserReport;
 use App\Models\UserBlock;
 use App\Models\ProfileImage;
@@ -206,6 +207,13 @@ class UserController extends Controller
         
         // Check if user exists
         $swipedUser = User::findOrFail($id);
+
+        // Prevent interaction with admin/moderator accounts
+        if ($swipedUser->role !== 'user') {
+            return response()->json([
+                'message' => 'Cannot interact with this user',
+            ], 403);
+        }
         
         // Check if already swiped
         $existingSwipe = UserSwipe::where('swiper_id', $swiper->id)
@@ -227,43 +235,29 @@ class UserController extends Controller
         
         $match = null;
         
-        // Check for match (if liked)
+        // Create like record for matching system
         if ($action === 'like' || $action === 'super_like') {
-            // Check if the other user has liked us
-            $mutualLike = UserSwipe::where('swiper_id', $id)
-                ->where('swiped_id', $swiper->id)
-                ->whereIn('action', ['like', 'super_like'])
-                ->first();
-            
-            if ($mutualLike) {
-                // Create match
-                $match = UserMatch::create([
-                    'user_one_id' => min($swiper->id, $id),
-                    'user_two_id' => max($swiper->id, $id),
-                    'is_active' => true,
-                    'matched_at' => now(),
+            // Check if there's already a like relationship
+            $existingLike = Like::where(function ($q) use ($swiper, $id) {
+                $q->where('sender_id', $swiper->id)->where('receiver_id', $id)
+                  ->orWhere('sender_id', $id)->where('receiver_id', $swiper->id);
+            })->first();
+
+            if (!$existingLike) {
+                // Create new like
+                Like::create([
+                    'sender_id' => $swiper->id,
+                    'receiver_id' => $id,
+                    'status' => 'pending'
                 ]);
-                
-                // Create conversation for match
-                $match->conversation()->create([
-                    'is_active' => true,
-                ]);
-                
-                // Send notifications
-                Notification::create([
-                    'user_id' => $swiper->id,
-                    'type' => 'match',
-                    'title' => 'New Match!',
-                    'body' => 'You and ' . $swipedUser->profile->first_name . ' liked each other!',
-                    'data' => ['match_id' => $match->id],
-                ]);
-                
+
+                // Send notification to receiver
                 Notification::create([
                     'user_id' => $id,
-                    'type' => 'match',
-                    'title' => 'New Match!',
-                    'body' => 'You and ' . $swiper->profile->first_name . ' liked each other!',
-                    'data' => ['match_id' => $match->id],
+                    'type' => 'like',
+                    'title' => 'New Like!',
+                    'body' => $swiper->profile->first_name . ' liked you!',
+                    'data' => ['sender_id' => $swiper->id],
                 ]);
             }
         }

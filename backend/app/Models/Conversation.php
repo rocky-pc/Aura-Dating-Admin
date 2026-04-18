@@ -13,12 +13,10 @@ class Conversation extends Model
 
     protected $fillable = [
         'match_id',
-        'is_active',
         'last_message_at',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
         'last_message_at' => 'datetime',
     ];
 
