@@ -44,12 +44,7 @@ class UserMatch extends Model
 
     public function conversation(): HasOne
     {
-        return $this->hasOne(Conversation::class);
-    }
-
-    public function messages(): HasMany
-    {
-        return $this->hasMany(Message::class);
+        return $this->hasOne(Conversation::class, 'match_id');
     }
 
     public function getOtherUser(User $user): User

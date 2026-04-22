@@ -221,24 +221,24 @@
             <i class="bi bi-grid-1x2-fill"></i><span>Dashboard</span>
         </a>
         <a class="ni {{ request()->routeIs('admin.users.*') ? 'active' : '' }}" href="{{ route('admin.users.index') }}">
-            <i class="bi bi-people-fill"></i><span>Users</span><span class="nb">1.2k</span>
+            <i class="bi bi-people-fill"></i><span>Users</span><span class="nb"></span>
         </a>
         <a class="ni {{ request()->routeIs('admin.matches.*') ? 'active' : '' }}" href="{{ route('admin.matches.index') }}">
             <i class="bi bi-heart-fill"></i><span>Matches</span>
         </a>
-        <a class="ni {{ request()->routeIs('admin.swipes.*') ? 'active' : '' }}" href="#">
+        <a class="ni {{ request()->routeIs('admin.swipes.*') ? 'active' : '' }}" href="{{ route('admin.swipes.index') }}">
             <i class="bi bi-hand-thumbs-up-fill"></i><span>Swipes</span>
         </a>
         <a class="ni {{ request()->routeIs('admin.favorites.*') ? 'active' : '' }}" href="{{ route('admin.favorites.index') }}">
             <i class="bi bi-bookmark-fill"></i><span>Favorites</span>
         </a>
-        <a class="ni {{ request()->routeIs('admin.messages.*') ? 'active' : '' }}" href="#">
-            <i class="bi bi-chat-dots-fill"></i><span>Messages</span><span class="nb">7</span>
+        <a class="ni {{ request()->routeIs('admin.messages.*') ? 'active' : '' }}" href="{{ route('admin.messages.index') }}">
+            <i class="bi bi-chat-dots-fill"></i><span>Messages</span><span class="nb"></span>
         </a>
         <div class="sdiv"></div>
         <div class="nav-lbl">Moderation</div>
         <a class="ni {{ request()->routeIs('admin.reports.*') ? 'active' : '' }}" href="{{ route('admin.reports.index') }}">
-            <i class="bi bi-flag-fill"></i><span>Reports</span><span class="nb">3</span>
+            <i class="bi bi-flag-fill"></i><span>Reports</span><span class="nb"></span>
         </a>
         <a class="ni" href="#">
             <i class="bi bi-shield-check"></i><span>Verify</span>

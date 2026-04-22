@@ -22,7 +22,7 @@ class Conversation extends Model
 
     public function match(): BelongsTo
     {
-        return $this->belongsTo(UserMatch::class, 'match_id');
+        return $this->belongsTo(UserMatch::class, 'match_id', 'id');
     }
 
     public function messages(): HasMany

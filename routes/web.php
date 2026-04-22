@@ -26,7 +26,9 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     
     // Users
     Route::get('/users', [UserController::class, 'webIndex'])->name('users.index');
+    Route::get('/users/{user}/edit-data', [UserController::class, 'editData'])->name('users.edit-data');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
+    Route::put('/users/{user}', [UserController::class, 'webUpdate'])->name('users.update');
     Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggle-active');
     Route::post('/users/{user}/verify', [UserController::class, 'verify'])->name('users.verify');
     
@@ -53,6 +55,16 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     // Favorites & Swipes
     Route::get('/favorites', [\App\Http\Controllers\Admin\FavoriteController::class, 'webIndex'])->name('favorites.index');
     Route::delete('/favorites/{swipe}', [\App\Http\Controllers\Admin\FavoriteController::class, 'destroy'])->name('favorites.destroy');
+
+    // Swipes
+    Route::get('/swipes', [\App\Http\Controllers\Admin\SwipeController::class, 'index'])->name('swipes.index');
+    Route::get('/swipes/{id}', [\App\Http\Controllers\Admin\SwipeController::class, 'show'])->name('swipes.show');
+    Route::delete('/swipes/{id}', [\App\Http\Controllers\Admin\SwipeController::class, 'destroy'])->name('swipes.destroy');
+
+    // Messages
+    Route::get('/messages', [\App\Http\Controllers\Admin\MessageController::class, 'index'])->name('messages.index');
+    Route::get('/messages/{id}', [\App\Http\Controllers\Admin\MessageController::class, 'show'])->name('messages.show');
+    Route::delete('/messages/{id}', [\App\Http\Controllers\Admin\MessageController::class, 'destroy'])->name('messages.destroy');
 
     // Matches & Likes
     Route::get('/matches', [\App\Http\Controllers\Admin\MatchController::class, 'index'])->name('matches.index');

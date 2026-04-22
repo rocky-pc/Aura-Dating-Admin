@@ -117,6 +117,23 @@ class UserController extends Controller
     }
 
     /**
+     * Get user data for editing
+     */
+    public function editData(User $user)
+    {
+        $user->load('profile');
+        
+        $userData = $user->toArray();
+        if ($user->profile && $user->profile->date_of_birth) {
+            $userData['profile']['date_of_birth'] = $user->profile->date_of_birth->format('Y-m-d');
+        }
+        
+        return response()->json([
+            'user' => $userData,
+        ]);
+    }
+
+    /**
      * Create new user
      */
     public function store(Request $request)
@@ -184,6 +201,77 @@ class UserController extends Controller
             'message' => 'User updated successfully',
             'user' => $user->fresh(['profile']),
         ]);
+    }
+
+    /**
+     * Web - Update user from admin panel
+     */
+    public function webUpdate(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'phone' => 'sometimes|nullable|unique:users,phone,' . $user->id,
+            'is_active' => 'sometimes|boolean',
+            'is_verified' => 'sometimes|boolean',
+            'is_premium' => 'sometimes|boolean',
+            'role' => 'sometimes|in:user,admin,moderator',
+            'first_name' => 'nullable|string|max:50',
+            'last_name' => 'nullable|string|max:50',
+            'gender' => 'nullable|in:male,female,other',
+            'date_of_birth' => 'nullable|date',
+            'bio' => 'nullable|string|max:500',
+        ]);
+
+        $userData = [
+            'email' => $validated['email'] ?? $user->email,
+            'phone' => $validated['phone'] ?? $user->phone,
+            'role' => $validated['role'] ?? $user->role,
+        ];
+
+        // Handle checkbox fields properly - they are only in request when checked
+        if ($request->has('is_active')) {
+            $userData['is_active'] = $request->boolean('is_active');
+        }
+        if ($request->has('is_verified')) {
+            $userData['is_verified'] = $request->boolean('is_verified');
+        }
+        if ($request->has('is_premium')) {
+            $userData['is_premium'] = $request->boolean('is_premium');
+        }
+
+        $user->update($userData);
+
+        $profileData = [];
+        if ($request->filled('first_name')) {
+            $profileData['first_name'] = $validated['first_name'];
+        }
+        if ($request->filled('last_name')) {
+            $profileData['last_name'] = $validated['last_name'];
+        }
+        if ($request->filled('gender')) {
+            $profileData['gender'] = $validated['gender'];
+        }
+        if ($request->filled('date_of_birth')) {
+            $profileData['date_of_birth'] = $validated['date_of_birth'];
+        }
+        if ($request->filled('bio')) {
+            $profileData['bio'] = $validated['bio'];
+        }
+
+        if (!empty($profileData)) {
+            $user->load('profile');
+            try {
+                if ($user->profile) {
+                    $user->profile()->update($profileData);
+                } else {
+                    $user->profile()->create(array_merge(['user_id' => $user->id], $profileData));
+                }
+            } catch (\Exception $e) {
+                \Log::error('Profile update failed: ' . $e->getMessage());
+            }
+        }
+
+        return redirect()->back()->with('success', 'User updated successfully');
     }
 
     /**
