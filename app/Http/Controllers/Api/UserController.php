@@ -140,8 +140,24 @@ class UserController extends Controller
             ], 404);
         }
 
+        // Get user stats
+        $matchesCount = UserMatch::where(function ($q) use ($user) {
+            $q->where('user_one_id', $user->id)->orWhere('user_two_id', $user->id);
+        })->where('is_active', true)->count();
+
+        $likesCount = Like::where('sender_id', $user->id)->count();
+
+        $chatsCount = UserMatch::where(function ($q) use ($user) {
+            $q->where('user_one_id', $user->id)->orWhere('user_two_id', $user->id);
+        })->where('is_active', true)->whereHas('conversation')->count();
+
         return response()->json([
             'user' => $user,
+            'stats' => [
+                'matches' => $matchesCount,
+                'likes' => $likesCount,
+                'chats' => $chatsCount,
+            ],
         ]);
     }
 
@@ -645,7 +661,7 @@ class UserController extends Controller
      */
     public function sendConnectionRequest(Request $request, $userId)
     {
-        $currentUser = $request->user();
+        $currentUser = $request->user()->load('profile');
 
         if ($currentUser->id == $userId) {
             return response()->json([
@@ -675,11 +691,12 @@ class UserController extends Controller
         ]);
 
         // Send notification
+        $senderName = $currentUser->profile ? $currentUser->profile->first_name : $currentUser->email;
         Notification::create([
             'user_id' => $userId,
             'type' => 'connection_request',
             'title' => 'New Connection Request',
-            'body' => $currentUser->profile->first_name . ' sent you a connection request',
+            'body' => $senderName . ' sent you a connection request',
             'data' => ['request_id' => $connection->id, 'sender_id' => $currentUser->id],
         ]);
 
