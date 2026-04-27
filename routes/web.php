@@ -6,6 +6,8 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SubscriptionController;
+use App\Http\Controllers\Admin\PremiumController;
+use App\Http\Controllers\Admin\AnalyticsController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -18,7 +20,7 @@ Route::get('/admin/login', [AuthController::class, 'showLoginForm'])->name('admi
 Route::post('/admin/login', [AuthController::class, 'login'])->name('admin.login.post');
 
 // Admin Routes (Protected)
-Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
+Route::prefix('admin')->name('admin.')->middleware('admin')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     
     // Dashboard
@@ -31,6 +33,7 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::put('/users/{user}', [UserController::class, 'webUpdate'])->name('users.update');
     Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggle-active');
     Route::post('/users/{user}/verify', [UserController::class, 'verify'])->name('users.verify');
+    Route::delete('/users/{user}/web-destroy', [UserController::class, 'webDestroy'])->name('users.web-destroy');
     
     // Reports
     Route::get('/reports', [ReportController::class, 'webIndex'])->name('reports.index');
@@ -39,9 +42,16 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     // Subscriptions
     Route::get('/subscriptions', [SubscriptionController::class, 'webIndex'])->name('subscriptions.index');
     Route::post('/subscriptions/{subscription}/cancel', [SubscriptionController::class, 'cancel'])->name('subscriptions.cancel');
+
+    // Premium Users
+    Route::get('/premium', [PremiumController::class, 'webIndex'])->name('premium.index');
+
+    // Analytics
+    Route::get('/analytics', [AnalyticsController::class, 'webIndex'])->name('analytics.index');
     
     // Wallets
     Route::get('/wallets', [\App\Http\Controllers\Admin\WalletController::class, 'webIndex'])->name('wallets.index');
+    Route::get('/wallets/export', [\App\Http\Controllers\Admin\WalletController::class, 'export'])->name('wallets.export');
     Route::post('/wallets/{wallet}/add-points', [\App\Http\Controllers\Admin\WalletController::class, 'webAddPoints'])->name('wallets.add-points');
     Route::post('/wallets/{wallet}/deduct-points', [\App\Http\Controllers\Admin\WalletController::class, 'webDeductPoints'])->name('wallets.deduct-points');
     Route::post('/wallets/{wallet}/reset', [\App\Http\Controllers\Admin\WalletController::class, 'webReset'])->name('wallets.reset');

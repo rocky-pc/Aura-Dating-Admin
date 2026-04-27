@@ -213,6 +213,8 @@
 .ab-play:hover{background:rgba(6,214,160,.18);border-color:rgba(6,214,160,.4);transform:translateY(-1px)}
 .ab-vfy{color:var(--rose);border-color:rgba(255,61,127,.22);background:rgba(255,61,127,.07)}
 .ab-vfy:hover{background:rgba(255,61,127,.18);border-color:rgba(255,61,127,.4);transform:translateY(-1px)}
+.ab-delete{color:var(--red);border-color:rgba(255,71,87,.22);background:rgba(255,71,87,.07)}
+.ab-delete:hover{background:rgba(255,71,87,.18);border-color:rgba(255,71,87,.4);transform:translateY(-1px)}
 
 /* ───────────── PAGINATION ───────────── */
 .pag-wrap{
@@ -630,6 +632,11 @@
                                         <button type="submit" class="ab ab-vfy" title="Verify user">🛡</button>
                                     </form>
                                 @endunless
+                                <form method="POST" action="{{ route('admin.users.web-destroy', $user->id) }}" style="display:contents" onsubmit="return confirm('Are you sure you want to delete this user? This action cannot be undone.')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="ab ab-delete" title="Delete user">🗑️</button>
+                                </form>
                             </div>
                         </td>
                     </tr>
@@ -1005,6 +1012,13 @@
                     </button>
                 </form>
             @endunless
+            <form method="POST" action="{{ route('admin.users.web-destroy', $user->id) }}" style="display:contents" onsubmit="return confirm('Are you sure you want to delete this user? This action cannot be undone.')">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="df-btn df-ghost" style="color:var(--red);border-color:rgba(255,71,87,.22);background:rgba(255,71,87,.07)">
+                    🗑️ Delete
+                </button>
+            </form>
         </div>
 
     </div>

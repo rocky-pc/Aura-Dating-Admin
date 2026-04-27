@@ -17,6 +17,7 @@ use App\Models\Notification;
 use App\Models\ConnectionRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
@@ -120,18 +121,25 @@ class UserController extends Controller
     {
         $user = User::with(['profile', 'images', 'hobbies.hobby'])
             ->findOrFail($id);
-        
+
+        // Prevent viewing admin/moderator profiles
+        if (in_array($user->role, ['admin', 'moderator'])) {
+            return response()->json([
+                'message' => 'User not found',
+            ], 404);
+        }
+
         // Check if user is blocked
         $isBlocked = UserBlock::where('blocker_id', $request->user()->id)
             ->where('blocked_id', $id)
             ->exists();
-        
+
         if ($isBlocked) {
             return response()->json([
                 'message' => 'User not found',
             ], 404);
         }
-        
+
         return response()->json([
             'user' => $user,
         ]);
@@ -143,27 +151,57 @@ class UserController extends Controller
     public function updateProfile(Request $request)
     {
         $user = $request->user();
-        
-        $validated = $request->validate([
-            'first_name' => 'sometimes|string|max:50',
-            'last_name' => 'sometimes|string|max:50',
-            'bio' => 'sometimes|string|max:500',
-            'gender' => 'sometimes|in:male,female,other',
-            'date_of_birth' => 'sometimes|date|before:today|after:1900-01-01',
-            'job_title' => 'sometimes|string|max:100',
-            'company' => 'sometimes|string|max:100',
-            'school' => 'sometimes|string|max:100',
-            'show_gender' => 'sometimes|in:male,female,both,none',
-            'min_age_preference' => 'sometimes|integer|min:18|max:100',
-            'max_age_preference' => 'sometimes|integer|min:18|max:100',
-            'max_distance_preference' => 'sometimes|integer|min:1|max:100',
+
+        // Get allowed fields from request
+        $allowedFields = [
+            'first_name', 'last_name', 'bio', 'gender', 'date_of_birth',
+            'job_title', 'company', 'school', 'show_gender',
+            'min_age_preference', 'max_age_preference', 'max_distance_preference'
+        ];
+
+        $updateData = $request->only($allowedFields);
+
+        // Debug: Log received data
+        Log::info('ApiUserController - Profile update request data', [
+            'user_id' => $user->id,
+            'received_data' => $updateData,
+            'all_request_data' => $request->all()
         ]);
 
-        $user->profile()->update($validated);
+        // Validate the data
+        $validated = $request->validate([
+            'first_name' => 'sometimes|nullable|string|max:50',
+            'last_name' => 'sometimes|nullable|string|max:50',
+            'bio' => 'sometimes|nullable|string|max:500',
+            'gender' => 'sometimes|nullable|in:male,female,other',
+            'date_of_birth' => 'sometimes|nullable|date',
+            'job_title' => 'sometimes|nullable|string|max:100',
+            'company' => 'sometimes|nullable|string|max:100',
+            'school' => 'sometimes|nullable|string|max:100',
+            'show_gender' => 'sometimes|nullable|in:male,female,both,none',
+            'min_age_preference' => 'sometimes|nullable|integer|min:18|max:100',
+            'max_age_preference' => 'sometimes|nullable|integer|min:18|max:100',
+            'max_distance_preference' => 'sometimes|nullable|integer|min:1|max:100',
+        ]);
+
+        Log::info('ApiUserController - Validated data', ['validated' => $validated]);
+
+        // Ensure profile exists, create if not
+        if (!$user->profile) {
+            Log::info('ApiUserController - Creating new profile for user', ['user_id' => $user->id]);
+            $user->profile()->create($validated);
+        } else {
+            Log::info('ApiUserController - Updating existing profile for user', ['user_id' => $user->id, 'profile_id' => $user->profile->id]);
+            $user->profile()->update($validated);
+        }
+
+        $freshUser = $user->fresh(['profile', 'images']);
+        Log::info('ApiUserController - Profile update result', ['updated_profile' => $freshUser->profile]);
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user' => $user->fresh(['profile', 'images']),
+            'user' => $freshUser,
+            'updated_fields' => array_keys($validated), // Debug info
         ]);
     }
 
@@ -353,15 +391,40 @@ class UserController extends Controller
     {
         $image = ProfileImage::where('user_id', $request->user()->id)
             ->findOrFail($id);
-        
+
         // Delete file
         $path = str_replace('/storage/', '', $image->image_url);
         Storage::disk('public')->delete($path);
-        
+
         $image->delete();
-        
+
         return response()->json([
             'message' => 'Image deleted successfully',
+        ]);
+    }
+
+    /**
+     * Set primary profile image
+     */
+    public function setPrimaryImage(Request $request, $id)
+    {
+        $user = $request->user();
+
+        // Find the image
+        $image = ProfileImage::where('user_id', $user->id)
+            ->findOrFail($id);
+
+        // Unset all other primary images for this user
+        ProfileImage::where('user_id', $user->id)
+            ->where('id', '!=', $id)
+            ->update(['is_primary' => false]);
+
+        // Set this image as primary
+        $image->update(['is_primary' => true]);
+
+        return response()->json([
+            'message' => 'Primary image updated successfully',
+            'image' => $image,
         ]);
     }
 
@@ -643,10 +706,10 @@ class UserController extends Controller
 
         // Create match and conversation
         $match = UserMatch::create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
             'user_one_id' => min($connection->sender_id, $connection->receiver_id),
             'user_two_id' => max($connection->sender_id, $connection->receiver_id),
             'is_active' => true,
-            'matched_at' => now(),
         ]);
 
         $match->conversation()->create([

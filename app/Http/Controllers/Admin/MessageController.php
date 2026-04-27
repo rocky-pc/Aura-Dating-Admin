@@ -52,12 +52,13 @@ class MessageController extends Controller
         $match = UserMatch::with([
             'userOne.profile',
             'userOne.images',
-            'userTwo.profile', 
+            'userTwo.profile',
             'userTwo.images',
             'conversation.messages.sender'
         ])->findOrFail($id);
 
-        $messages = $match->conversation?->messages()->orderBy('created_at', 'asc')->get() ?? collect();
+        $messages = $match->conversation?->messages ?? collect();
+        $messages = $messages->sortBy('created_at');
 
         return view('admin.messages.show', compact('match', 'messages'));
     }

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Aura — Admin Panel')</title>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Figtree:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -254,10 +255,10 @@
         <a class="ni {{ request()->routeIs('admin.wallets.*') ? 'active' : '' }}" href="{{ route('admin.wallets.index') }}">
             <i class="bi bi-wallet-fill"></i><span>Wallets</span>
         </a>
-        <a class="ni" href="#">
+        <a class="ni {{ request()->routeIs('admin.analytics.*') ? 'active' : '' }}" href="{{ route('admin.analytics.index') }}">
             <i class="bi bi-graph-up-arrow"></i><span>Analytics</span>
         </a>
-        <a class="ni" href="#">
+        <a class="ni {{ request()->routeIs('admin.premium.*') ? 'active' : '' }}" href="{{ route('admin.premium.index') }}">
             <i class="bi bi-star-fill"></i><span>Premium</span>
         </a>
         <div class="sdiv"></div>

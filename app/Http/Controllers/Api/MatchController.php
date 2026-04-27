@@ -37,10 +37,16 @@ class MatchController extends Controller
         // Add other user info to each match
         $matches->getCollection()->transform(function ($match) use ($user) {
             $otherUser = $match->user_one_id === $user->id ? $match->userTwo : $match->userOne;
+
+            // Filter out admin/moderator users from matches
+            if ($otherUser && in_array($otherUser->role, ['admin', 'moderator'])) {
+                return null; // This will be filtered out
+            }
+
             unset($match->userOne, $match->userTwo);
             $match->other_user = $otherUser;
             return $match;
-        });
+        })->filter(); // Remove null entries
         
         return response()->json($matches);
     }
@@ -62,7 +68,12 @@ class MatchController extends Controller
             ->firstOrFail();
         
         $otherUser = $match->user_one_id === $user->id ? $match->userOne : $match->userTwo;
-        
+
+        // Prevent showing admin/moderator user details
+        if (in_array($otherUser->role, ['admin', 'moderator'])) {
+            return response()->json(['error' => 'Match not found'], 404);
+        }
+
         return response()->json([
             'match' => $match,
             'other_user' => $otherUser,
@@ -120,6 +131,13 @@ class MatchController extends Controller
         }
 
         if ($targetUser->role !== 'user') {
+            Log::warning('User attempted to like non-user account', [
+                'user_id' => $user->id,
+                'user_role' => $user->role,
+                'target_user_id' => $targetUser->id,
+                'target_user_role' => $targetUser->role,
+                'target_user_uuid' => $targetUser->uuid,
+            ]);
             return response()->json(['success' => false, 'error' => 'Cannot interact with this user'], 403);
         }
 
@@ -282,6 +300,7 @@ class MatchController extends Controller
                     try {
                         // Create match record
                         $match = UserMatch::create([
+                            'uuid' => (string) Str::uuid(),
                             'user_one_id' => min($user->id, $like->sender_id),
                             'user_two_id' => max($user->id, $like->sender_id),
                             'is_active' => true,
@@ -367,10 +386,16 @@ class MatchController extends Controller
                 ->get()
                 ->map(function ($like) {
                     $receiver = $like->receiver;
+
+                    // Skip admin/moderator users
+                    if (!$receiver || in_array($receiver->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($receiver && $receiver->profile) {
+                    if ($receiver->profile) {
                         $firstName = $receiver->profile->first_name ?: 'User';
 
                         // Get primary profile image
@@ -403,10 +428,16 @@ class MatchController extends Controller
                 ->get()
                 ->map(function ($like) {
                     $sender = $like->sender;
+
+                    // Skip admin/moderator users
+                    if (!$sender || in_array($sender->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($sender && $sender->profile) {
+                    if ($sender->profile) {
                         $firstName = $sender->profile->first_name ?: 'User';
 
                         // Get primary profile image
@@ -443,10 +474,16 @@ class MatchController extends Controller
 
                     // Get basic user info without complex relationships
                     $otherUser = User::find($otherUserId);
+
+                    // Skip admin/moderator users
+                    if (!$otherUser || in_array($otherUser->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($otherUser && $otherUser->profile) {
+                    if ($otherUser->profile) {
                         $firstName = $otherUser->profile->first_name ?: 'User';
 
                         // Get primary profile image

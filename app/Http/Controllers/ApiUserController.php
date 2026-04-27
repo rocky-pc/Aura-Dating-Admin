@@ -46,7 +46,7 @@ class ApiUserController extends Controller
         // Build query for discovery users
         $query = User::where('id', '!=', $user->id)
             ->where('is_active', 1)
-            ->where('role', 'user') // Only show regular users, exclude admin/moderator accounts
+            ->whereNotIn('role', ['admin', 'moderator']) // Exclude admin and moderator accounts
             ->whereNotIn('id', $swipedUserIds)
             ->whereNotIn('id', $blockedIds)
             ->with(['profile', 'images']);

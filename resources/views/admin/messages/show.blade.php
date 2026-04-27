@@ -166,7 +166,7 @@ input,select{font-family:inherit}
             @php $lastDate = $msgDate; @endphp
           @endif
           <div class="msg {{ $isSent ? 'msg-sent' : 'msg-received' }} {{ !$message->is_read && !$isSent ? 'unread' : '' }}">
-            <div class="msg-bubble">{{ $message->message }}</div>
+            <div class="msg-bubble">{{ $message->message_content }}</div>
             <div class="msg-meta">
               <span class="msg-time">{{ $message->created_at->format('H:i') }}</span>
               @if($isSent)

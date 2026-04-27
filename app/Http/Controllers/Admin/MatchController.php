@@ -17,7 +17,9 @@ class MatchController extends Controller
         $status = $request->get('status', 'all');
         $search = $request->get('search');
 
-        $query = Like::with(['sender.profile', 'sender.images', 'receiver.profile', 'receiver.images']);
+        $query = Like::with(['sender.profile', 'sender.images', 'receiver.profile', 'receiver.images'])
+            ->whereHas('sender')
+            ->whereHas('receiver');
 
         // Filter by status
         if ($status !== 'all') {
@@ -63,6 +65,8 @@ class MatchController extends Controller
     public function show($id)
     {
         $like = Like::with(['sender.profile', 'sender.images', 'receiver.profile', 'receiver.images'])
+            ->whereHas('sender')
+            ->whereHas('receiver')
             ->findOrFail($id);
 
         return view('admin.matches.show', compact('like'));

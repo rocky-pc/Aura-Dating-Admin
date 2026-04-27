@@ -197,6 +197,7 @@ class LikeController extends Controller
                     try {
                         // Create match record
                         $match = UserMatch::create([
+                            'uuid' => (string) Str::uuid(),
                             'user_one_id' => min($user->id, $like->sender_id),
                             'user_two_id' => max($user->id, $like->sender_id),
                             'is_active' => true,

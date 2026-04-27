@@ -10,6 +10,7 @@ use App\Models\UserBlock;
 use App\Models\ProfileImage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
@@ -267,7 +268,7 @@ class UserController extends Controller
                     $user->profile()->create(array_merge(['user_id' => $user->id], $profileData));
                 }
             } catch (\Exception $e) {
-                \Log::error('Profile update failed: ' . $e->getMessage());
+                Log::error('Profile update failed: ' . $e->getMessage());
             }
         }
 
@@ -337,6 +338,22 @@ class UserController extends Controller
         return response()->json([
             'message' => 'User deleted successfully',
         ]);
+    }
+
+    /**
+     * Web - Delete user from admin panel
+     */
+    public function webDestroy(User $user)
+    {
+        // Prevent deleting admin users
+        if ($user->role === 'admin') {
+            return redirect()->back()->with('error', 'Cannot delete admin users');
+        }
+
+        // Soft delete the user
+        $user->delete();
+
+        return redirect()->back()->with('success', 'User deleted successfully');
     }
 
     /**

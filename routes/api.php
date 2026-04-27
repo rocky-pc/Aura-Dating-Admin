@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}/block', [ApiUserController::class, 'block']);
         Route::put('/profile', [ApiUserController::class, 'updateProfile']);
         Route::post('/profile/images', [ApiUserController::class, 'uploadImage']);
+        Route::put('/profile/images/{id}/primary', [ApiUserController::class, 'setPrimaryImage']);
         Route::delete('/profile/images/{id}', [ApiUserController::class, 'deleteImage']);
         Route::get('/profile/hobbies', [ApiUserController::class, 'getHobbies']);
         Route::post('/profile/hobbies', [ApiUserController::class, 'updateHobbies']);
@@ -145,9 +146,10 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     // Wallets
     Route::get('/wallets', [AdminWalletController::class, 'index']);
     Route::get('/wallets/{wallet}', [AdminWalletController::class, 'show']);
-    Route::post('/wallets/add-points', [AdminWalletController::class, 'addPoints']);
+    Route::post('/wallets/add-points', [AdminWalletController::class, 'addPoints'])->name('admin.wallets.add-points');
     Route::post('/wallets/deduct-points', [AdminWalletController::class, 'deductPoints']);
-    Route::post('/wallets/reset', [AdminWalletController::class, 'reset']);
+    Route::post('/wallets/reset', [AdminWalletController::class, 'reset'])->name('admin.wallets.reset');
+    Route::get('/wallets/export', [AdminWalletController::class, 'export'])->name('admin.wallets.export');
     Route::get('/wallets-stats', [AdminWalletController::class, 'stats']);
     Route::get('/wallet-settings', [AdminWalletController::class, 'settings']);
     Route::put('/wallet-settings', [AdminWalletController::class, 'updateSettings']);

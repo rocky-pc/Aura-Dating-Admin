@@ -284,10 +284,10 @@
                 {{-- Sender --}}
                 <td>
                     <div class="uc">
-                        <div class="uav">{{ strtoupper(substr($like->sender->email, 0, 2)) }}</div>
+                        <div class="uav">{{ $like->sender ? strtoupper(substr($like->sender->email ?? '??', 0, 2)) : '??' }}</div>
                         <div>
-                            <div class="ue">{{ $like->sender->profile->first_name ?? '' }} {{ $like->sender->profile->last_name ?? 'Unknown' }}</div>
-                            <div class="em">{{ $like->sender->email }}</div>
+                            <div class="ue">{{ $like->sender ? ($like->sender->profile->first_name ?? '') . ' ' . ($like->sender->profile->last_name ?? 'Unknown') : 'Deleted User' }}</div>
+                            <div class="em">{{ $like->sender ? $like->sender->email : 'N/A' }}</div>
                         </div>
                     </div>
                 </td>
@@ -301,11 +301,11 @@
                 <td>
                     <div class="uc">
                         <div class="uav" style="background:linear-gradient(135deg,var(--violet),#3b9eff)">
-                            {{ strtoupper(substr($like->receiver->email, 0, 2)) }}
+                            {{ $like->receiver ? strtoupper(substr($like->receiver->email ?? '??', 0, 2)) : '??' }}
                         </div>
                         <div>
-                            <div class="ue">{{ $like->receiver->profile->first_name ?? '' }} {{ $like->receiver->profile->last_name ?? 'Unknown' }}</div>
-                            <div class="em">{{ $like->receiver->email }}</div>
+                            <div class="ue">{{ $like->receiver ? ($like->receiver->profile->first_name ?? '') . ' ' . ($like->receiver->profile->last_name ?? 'Unknown') : 'Deleted User' }}</div>
+                            <div class="em">{{ $like->receiver ? $like->receiver->email : 'N/A' }}</div>
                         </div>
                     </div>
                 </td>

@@ -23,24 +23,39 @@ class ChatController extends Controller
         try {
             $user = $request->user();
 
-            // Get conversations with basic user info
+            // Get conversations with basic user info, ordered by last message time
             $conversations = UserMatch::where('is_active', true)
                 ->where(function ($q) use ($user) {
                     $q->where('user_one_id', $user->id)
                         ->orWhere('user_two_id', $user->id);
                 })
-                ->orderBy('created_at', 'desc')
-                ->take(20)
+                ->whereHas('conversation.messages') // Only include conversations with messages
+                ->with(['conversation' => function ($query) {
+                    $query->with(['messages' => function ($q) {
+                        $q->latest()->limit(1); // Get only the latest message
+                    }]);
+                }])
                 ->get()
+                ->sortByDesc(function ($match) {
+                    // Sort by last message time, fallback to match creation time
+                    return $match->conversation?->messages?->first()?->created_at ?? $match->created_at;
+                })
+                ->take(20)
                 ->map(function ($match) use ($user) {
                     $otherUserId = $match->user_one_id === $user->id ? $match->user_two_id : $match->user_one_id;
 
                     // Get basic user info
                     $otherUser = User::find($otherUserId);
+
+                    // Skip admin/moderator users
+                    if (!$otherUser || in_array($otherUser->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($otherUser && $otherUser->profile) {
+                    if ($otherUser->profile) {
                         $firstName = $otherUser->profile->first_name ?: 'User';
 
                         // Get primary profile image
@@ -55,14 +70,37 @@ class ChatController extends Controller
                         }
                     }
 
+                    // Ensure conversation exists
+                    $conversation = $match->conversation;
+                    if (!$conversation) {
+                        $conversation = $match->conversation()->create([]);
+                    }
+
+                    // Get last message
+                    $lastMessage = $conversation->messages()->latest()->first();
+
+                    // Get unread count
+                    $unreadCount = $conversation->messages()
+                        ->where('sender_id', '!=', $user->id)
+                        ->where('is_read', false)
+                        ->count();
+
                     return [
                         'match_id' => $match->id,
-                        'conversation_id' => $match->conversation?->id,
+                        'conversation_id' => $conversation->id,
                         'other_user' => [
                             'id' => $otherUserId,
                             'first_name' => $firstName,
-                            'profile_image' => $profileImage,
+                            'profile' => [
+                                'first_name' => $firstName,
+                                'profile_image' => $profileImage,
+                            ],
                         ],
+                        'last_message' => $lastMessage ? [
+                            'message' => $lastMessage->message_content,
+                            'created_at' => $lastMessage->created_at->toISOString(),
+                        ] : null,
+                        'unread_count' => $unreadCount,
                         'matched_at' => $match->created_at?->toISOString(),
                     ];
                 })->filter()->values();
@@ -103,7 +141,7 @@ class ChatController extends Controller
         
         $messages = $conversation->messages()
             ->with('sender')
-            ->orderBy('created_at', 'asc')
+            ->orderBy('created_at', 'asc') // Oldest messages first, newest last
             ->paginate($request->get('per_page', 50));
         
         // Mark messages as read
@@ -144,21 +182,22 @@ class ChatController extends Controller
             ->firstOrFail();
         
         $conversation = $match->conversation;
-        
+
+        // Determine recipient
+        $recipientId = $match->user_one_id === $user->id ? $match->user_two_id : $match->user_one_id;
+
         // Create message
         $message = Message::create([
             'conversation_id' => $conversation->id,
             'sender_id' => $user->id,
-            'message' => $request->message,
+            'receiver_id' => $recipientId,
+            'message_content' => $request->message,
             'is_read' => false,
         ]);
-        
+
         // Update conversation last_message_at
         $conversation->update(['last_message_at' => now()]);
-        
-        // Determine recipient
-        $recipientId = $match->user_one_id === $user->id ? $match->user_two_id : $match->user_one_id;
-        
+
         // Send notification
         Notification::create([
             'user_id' => $recipientId,

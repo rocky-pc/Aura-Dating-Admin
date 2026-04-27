@@ -30,10 +30,16 @@ class MatchesController extends Controller
                 ->get()
                 ->map(function ($like) {
                     $receiver = $like->receiver;
+
+                    // Skip admin/moderator users
+                    if (!$receiver || in_array($receiver->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($receiver && $receiver->profile) {
+                    if ($receiver->profile) {
                         $firstName = $receiver->profile->first_name ?: 'User';
 
                         // Get primary profile image
@@ -66,10 +72,16 @@ class MatchesController extends Controller
                 ->get()
                 ->map(function ($like) {
                     $sender = $like->sender;
+
+                    // Skip admin/moderator users
+                    if (!$sender || in_array($sender->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($sender && $sender->profile) {
+                    if ($sender->profile) {
                         $firstName = $sender->profile->first_name ?: 'User';
 
                         // Get primary profile image
@@ -106,10 +118,16 @@ class MatchesController extends Controller
 
                     // Get basic user info without complex relationships
                     $otherUser = User::find($otherUserId);
+
+                    // Skip admin/moderator users
+                    if (!$otherUser || in_array($otherUser->role, ['admin', 'moderator'])) {
+                        return null;
+                    }
+
                     $firstName = 'User';
                     $profileImage = null;
 
-                    if ($otherUser && $otherUser->profile) {
+                    if ($otherUser->profile) {
                         $firstName = $otherUser->profile->first_name ?: 'User';
 
                         // Get primary profile image

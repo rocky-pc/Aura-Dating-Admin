@@ -9,6 +9,7 @@ use App\Models\Wallet;
 use App\Models\WalletSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
@@ -233,27 +234,57 @@ class AuthController extends Controller
     public function updateProfile(Request $request)
     {
         $user = $request->user();
-        
-        $validated = $request->validate([
-            'first_name' => 'sometimes|string|max:50',
-            'last_name' => 'sometimes|string|max:50',
-            'bio' => 'sometimes|string|max:500',
-            'gender' => 'sometimes|in:male,female,other',
-            'date_of_birth' => 'sometimes|date|before:today|after:1900-01-01',
-            'job_title' => 'sometimes|string|max:100',
-            'company' => 'sometimes|string|max:100',
-            'school' => 'sometimes|string|max:100',
-            'show_gender' => 'sometimes|in:male,female,both,none',
-            'min_age_preference' => 'sometimes|integer|min:18|max:100',
-            'max_age_preference' => 'sometimes|integer|min:18|max:100',
-            'max_distance_preference' => 'sometimes|integer|min:1|max:100',
+
+        // Get allowed fields from request
+        $allowedFields = [
+            'first_name', 'last_name', 'bio', 'gender', 'date_of_birth',
+            'job_title', 'company', 'school', 'show_gender',
+            'min_age_preference', 'max_age_preference', 'max_distance_preference'
+        ];
+
+        $updateData = $request->only($allowedFields);
+
+        // Debug: Log received data
+        Log::info('Profile update request data', [
+            'user_id' => $user->id,
+            'received_data' => $updateData,
+            'all_request_data' => $request->all()
         ]);
 
-        $user->profile()->update($validated);
+        // Validate the data
+        $validated = $request->validate([
+            'first_name' => 'sometimes|nullable|string|max:50',
+            'last_name' => 'sometimes|nullable|string|max:50',
+            'bio' => 'sometimes|nullable|string|max:500',
+            'gender' => 'sometimes|nullable|in:male,female,other',
+            'date_of_birth' => 'sometimes|nullable|date|before:today|after:1900-01-01',
+            'job_title' => 'sometimes|nullable|string|max:100',
+            'company' => 'sometimes|nullable|string|max:100',
+            'school' => 'sometimes|nullable|string|max:100',
+            'show_gender' => 'sometimes|nullable|in:male,female,both,none',
+            'min_age_preference' => 'sometimes|nullable|integer|min:18|max:100',
+            'max_age_preference' => 'sometimes|nullable|integer|min:18|max:100',
+            'max_distance_preference' => 'sometimes|nullable|integer|min:1|max:100',
+        ]);
+
+        Log::info('Validated data', ['validated' => $validated]);
+
+        // Ensure profile exists, create if not
+        if (!$user->profile) {
+            Log::info('Creating new profile for user', ['user_id' => $user->id]);
+            $user->profile()->create($validated);
+        } else {
+            Log::info('Updating existing profile for user', ['user_id' => $user->id, 'profile_id' => $user->profile->id]);
+            $user->profile()->update($validated);
+        }
+
+        $freshUser = $user->fresh(['profile', 'images']);
+        Log::info('Profile update result', ['updated_profile' => $freshUser->profile]);
 
         return response()->json([
             'message' => 'Profile updated successfully',
-            'user' => $user->fresh(['profile']),
+            'user' => $freshUser,
+            'updated_fields' => array_keys($validated), // Debug info
         ]);
     }
 
